@@ -33,31 +33,37 @@
     $$('.reveal').forEach(function (el) { io.observe(el); });
   } else { $$('.reveal').forEach(function (el) { el.classList.add('in'); }); }
 
-  // ====== المعرض ======
-  var figs = $$('#gal figure'), lb = $('#lb'), lbImg = $('#lbImg'), lbCap = $('#lbCap'), cur = 0, vis = [];
+  // ====== المعرض وعرض الصور المكبّرة ======
+  var lb = $('#lb'), lbImg = $('#lbImg'), lbCap = $('#lbCap'), cur = 0, vis = [];
   $$('.filters button').forEach(function (b) {
     b.addEventListener('click', function () {
       $$('.filters button').forEach(function (x) { x.classList.remove('on'); });
       b.classList.add('on');
       var f = b.dataset.f;
-      figs.forEach(function (fg) { fg.classList.toggle('hide', f !== 'all' && fg.dataset.cat !== f); });
+      $$('#gal figure').forEach(function (fg) { fg.classList.toggle('hide', f !== 'all' && fg.dataset.cat !== f); });
     });
   });
-  function openLb(i) {
-    vis = figs.filter(function (f) { return !f.classList.contains('hide'); });
-    cur = i; show();
-    lb.classList.add('on'); lb.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
+  function capOf(f) {
+    var c = $('figcaption', f); if (!c) return '';
+    var t = $('b', c); return t ? t.textContent : c.textContent;
   }
   function show() {
     var f = vis[cur]; if (!f) return;
-    lbImg.src = $('img', f).src; lbImg.alt = $('img', f).alt; lbCap.textContent = $('figcaption', f).textContent;
+    var im = $('img', f);
+    lbImg.src = im.currentSrc || im.src; lbImg.alt = im.alt; lbCap.textContent = capOf(f);
+  }
+  function openLb(group, f) {
+    vis = $$('figure.zoom', group).filter(function (x) { return !x.classList.contains('hide'); });
+    cur = Math.max(0, vis.indexOf(f)); show();
+    var multi = vis.length > 1;
+    $('.nx', lb).style.display = multi ? '' : 'none'; $('.pv', lb).style.display = multi ? '' : 'none';
+    lb.classList.add('on'); lb.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
   }
   function closeLb() { lb.classList.remove('on'); lb.setAttribute('aria-hidden', 'true'); document.body.style.overflow = ''; }
-  figs.forEach(function (f) {
-    f.addEventListener('click', function () {
-      var v = figs.filter(function (x) { return !x.classList.contains('hide'); });
-      openLb(v.indexOf(f));
-    });
+  document.addEventListener('click', function (e) {
+    var f = e.target.closest && e.target.closest('figure.zoom');
+    if (!f || lb.contains(e.target)) return;
+    openLb(f.closest('[data-group]') || f.parentNode, f);
   });
   $('.x', lb).addEventListener('click', closeLb);
   $('.nx', lb).addEventListener('click', function () { cur = (cur + 1) % vis.length; show(); });
@@ -279,7 +285,7 @@
 
   function bookSlot(info) {
     return fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ date: bk.date, time: bk.time, child: info.child, phone: info.phone, parent: info.parent, section: info.section, notes: info.notes, hp: '' }) })
+      body: JSON.stringify({ date: bk.date, time: bk.time, child: info.child, phone: info.phone, parent: info.parent, section: info.section, notes: info.notes, form: info.form, hp: '' }) })
       .then(function (r) { return r.json(); });
   }
   var BOOK_ERR = {
@@ -363,7 +369,7 @@
     }
 
     var bookP = needBook
-      ? bookSlot({ child: child, phone: phone, parent: data['الأب | الاسم'] || data['الأم | الاسم'] || '', section: data['الطفل | القسم المطلوب'] || '', notes: data['الطفل | الفترة'] || '' })
+      ? bookSlot({ child: child, phone: phone, parent: data['الأب | الاسم'] || data['الأم | الاسم'] || '', section: data['الطفل | القسم المطلوب'] || '', notes: data['الطفل | الفترة'] || '', form: data })
       : Promise.resolve({ ok: true });
     bookP.then(function (r) {
       if (!r.ok) { bookingError(r); loadSlots(true); unlock(); return; }

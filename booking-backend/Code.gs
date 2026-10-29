@@ -4,6 +4,7 @@
  * - 5 مقابلات كحد أقصى في اليوم، من 9:00 ص إلى 12:00 ظ.
  * - عند اكتمال الخمس مقابلات يُغلق اليوم تلقائيًا.
  * - البيانات تُحفظ في ورقة "الحجوزات" داخل جدول Google Sheet الخاص بكم.
+ * - الاستمارة كاملة تُحفظ أيضًا في ورقة "الاستمارات" (نسخة احتياطية بجانب البريد).
  * - لإلغاء حجز: غيّروا الحالة في عمود "الحالة" إلى: ملغي  (يُفتح الموعد فورًا).
  * - لإغلاق يوم (إجازة): أضيفوا تاريخه في ورقة "أيام مغلقة" بصيغة 2026-11-05.
  */
@@ -69,6 +70,39 @@ function closedDays_() {
 }
 function clean_(v, n) { return String(v || '').replace(/[\r\n]+/g, ' ').trim().slice(0, n || 120); }
 
+
+/** حفظ الاستمارة كاملة في ورقة "الاستمارات" (عمود لكل سؤال، وصف لكل طفل) */
+var FORM_SHEET = 'الاستمارات';
+function safeCell_(v) {
+  v = String(v == null ? '' : v).replace(/[\r\n]+/g, ' ').trim().slice(0, 500);
+  return /^[=+\-@]/.test(v) ? "'" + v : v; // يمنع تنفيذ أي معادلة مكتوبة في الاستمارة
+}
+function saveForm_(form, date, time) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(FORM_SHEET) || ss.insertSheet(FORM_SHEET);
+  var base = ['وقت الإرسال', 'موعد التقييم - اليوم', 'موعد التقييم - الساعة'];
+  var head = sh.getLastRow() > 0 ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String) : [];
+  if (!head.length) { head = base.slice(); }
+  var row = {};
+  row[base[0]] = Utilities.formatDate(new Date(), CFG.TZ, 'yyyy-MM-dd HH:mm');
+  row[base[1]] = date; row[base[2]] = time;
+  var n = 0;
+  for (var k in form) {
+    if (!form.hasOwnProperty(k) || k.charAt(0) === '_' || n++ >= 90) continue;
+    row[safeCell_(k).slice(0, 80)] = safeCell_(form[k]);
+  }
+  var added = false;
+  Object.keys(row).forEach(function (k) { if (head.indexOf(k) < 0) { head.push(k); added = true; } });
+  if (added || sh.getLastRow() === 0) {
+    sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  var vals = head.map(function (h) { return row.hasOwnProperty(h) ? row[h] : ''; });
+  var r = sh.getLastRow() + 1, rng = sh.getRange(r, 1, 1, head.length);
+  rng.setNumberFormat('@'); // نص: يحفظ الأصفار في أرقام الهاتف
+  rng.setValues([vals]);
+}
+
 /** جلب الأيام والمواعيد المحجوزة (بدون أي بيانات شخصية) */
 function doGet(e) {
   try {
@@ -112,6 +146,7 @@ function doPost(e) {
       Utilities.formatDate(new Date(), CFG.TZ, 'yyyy-MM-dd HH:mm'), date, time, child, phone,
       clean_(d.parent, 80), clean_(d.section, 40), clean_(d.notes, 200), 'مؤكد'
     ]);
+    try { if (d.form && typeof d.form === 'object') saveForm_(d.form, date, time); } catch (formErr) { /* الحجز تم حتى لو تعذر حفظ الاستمارة */ }
     SpreadsheetApp.flush();
 
     try {
